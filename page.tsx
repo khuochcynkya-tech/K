@@ -1,142 +1,94 @@
 "use client";
 
-import { useState } from "react";
-
-type Analysis = {
-  signal: "BUY" | "SELL" | "WAIT";
-  confidence: number;
-  timeframe: string;
-  entry: string;
-  stopLoss: string;
-  takeProfit: string;
-  support: string;
-  resistance: string;
-  reason: string;
-};
+import { ChangeEvent, useState } from "react";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
+  const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("សូម Upload រូប MT5 XAUUSD មុន");
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [status, setStatus] = useState("");
 
-  function chooseFile(f?: File) {
+  function choose(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
     if (!f) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) {
-      setMessage("សូមប្រើ JPG, PNG ឬ WEBP");
-      return;
-    }
-    if (f.size > 4 * 1024 * 1024) {
-      setMessage("រូបភាពធំពេក — អតិបរមា 4MB");
+    if (!f.type.startsWith("image/")) {
+      setStatus("សូមជ្រើសរូបភាព Chart ប៉ុណ្ណោះ។");
       return;
     }
     setFile(f);
     setPreview(URL.createObjectURL(f));
-    setAnalysis(null);
-    setMessage("រួចរាល់ — ជ្រើស Gemini ឬ Groq");
+    setResult("");
+    setStatus("រូបភាព Chart ត្រូវបានជ្រើសរើស។");
   }
 
-  async function analyzeWith(provider: "gemini" | "groq") {
+  async function analyze() {
     if (!file) {
-      setMessage("សូម Upload រូប MT5 XAUUSD ជាមុន");
+      setStatus("សូម Upload Chart ជាមុនសិន។");
       return;
     }
+
     setLoading(true);
-    setAnalysis(null);
-    setMessage(`កំពុងវិភាគដោយ ${provider === "gemini" ? "Gemini" : "Groq"}…`);
+    setResult("");
+    setStatus("កំពុងវិភាគ Chart...");
 
     try {
-      const body = new FormData();
-      body.append("image", file);
-      body.append("provider", provider);
-      const res = await fetch("/api/analyze", { method: "POST", body });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error?.message || "AI analysis failed");
-      setAnalysis(data.analysis);
-      setMessage(`វិភាគរួច — ${data.meta.provider} / ${data.meta.model}`);
+      const fd = new FormData();
+      fd.append("image", file);
+
+      const r = await fetch("/api/analyze", {
+        method: "POST",
+        body: fd
+      });
+
+      const d = await r.json();
+
+      if (!r.ok) throw new Error(d.error || "Analysis failed");
+
+      setResult(d.analysis || "មិនមានលទ្ធផលវិភាគ។");
+      setStatus("វិភាគបានជោគជ័យ។");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "មានបញ្ហា");
+      setStatus("មានបញ្ហា៖");
+      setResult(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="page">
-      <div className="shell">
-        <header className="header">
-          <span className="badge">XAUUSD AI V9</span>
-          <h1>វិភាគរូប MT5 XAUUSD</h1>
-          <p className="sub">
-            Upload chart → ជ្រើស AI → ទទួល BUY / SELL / WAIT ជាមួយ Entry, SL, TP និង Support/Resistance។
-          </p>
-        </header>
+    <main className="container">
+      <header className="header">
+        <h1>🟡 XAUUSD AI V9</h1>
+        <p>Upload MT5 Chart → AI Analysis</p>
+      </header>
 
+      <section className="card">
+        <label className="label">📊 ជ្រើស Chart XAUUSD</label>
+        <input
+          className="file"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={choose}
+        />
+
+        {preview && <img className="preview" src={preview} alt="XAUUSD chart preview" />}
+
+        <button className="btn" onClick={analyze} disabled={!file || loading}>
+          {loading ? "⏳ កំពុងវិភាគ..." : "🔎 វិភាគ XAUUSD"}
+        </button>
+
+        <div className="status">{status}</div>
+        <div className="small">
+          V9 ផ្តោតលើ Trend, Support/Resistance, Candle Confirmation, Entry, SL, TP និង Risk/Reward។
+        </div>
+      </section>
+
+      {result && (
         <section className="card">
-          <label className="upload">
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              hidden
-              onChange={(e) => chooseFile(e.target.files?.[0])}
-            />
-            {preview ? (
-              <img src={preview} alt="MT5 chart preview" />
-            ) : (
-              <div className="uploadText">
-                <strong>ចុចទីនេះដើម្បី Upload រូប MT5</strong>
-                JPG / PNG / WEBP — អតិបរមា 4MB
-              </div>
-            )}
-          </label>
-
-          <div className="actions">
-            <button className="btn primary" disabled={!file || loading} onClick={() => analyzeWith("gemini")}>
-              Gemini<br /><small>AI វិភាគ</small>
-            </button>
-            <button className="btn primary" disabled={!file || loading} onClick={() => analyzeWith("groq")}>
-              Groq<br /><small>AI វិភាគ</small>
-            </button>
-            <button
-              className="btn wait"
-              disabled={loading}
-              onClick={() => {
-                setAnalysis(null);
-                setMessage("WAIT — រង់ចាំ Candle Confirmation");
-              }}
-            >
-              WAIT<br /><small>រង់ចាំ</small>
-            </button>
-          </div>
-
-          <div className={message.includes("failed") || message.startsWith("មាន") ? "status error" : "status"}>
-            {message}
-          </div>
-
-          {analysis && (
-            <div className="result">
-              <div className="signal">{analysis.signal} · {analysis.confidence}%</div>
-              <div className="grid">
-                <div className="metric"><span>Timeframe</span><b>{analysis.timeframe}</b></div>
-                <div className="metric"><span>Entry</span><b>{analysis.entry}</b></div>
-                <div className="metric"><span>Stop Loss</span><b>{analysis.stopLoss}</b></div>
-                <div className="metric"><span>Take Profit</span><b>{analysis.takeProfit}</b></div>
-                <div className="metric"><span>Support</span><b>{analysis.support}</b></div>
-                <div className="metric"><span>Resistance</span><b>{analysis.resistance}</b></div>
-              </div>
-              <div className="card">
-                <strong>ហេតុផល</strong>
-                <p className="reason">{analysis.reason}</p>
-              </div>
-            </div>
-          )}
-
-          <p className="disclaimer">
-            ការវិភាគនេះជាព័ត៌មានសម្រាប់ជួយសិក្សា មិនមែនជាការធានាថាតម្លៃនឹងឡើង/ចុះ ឬជាដំបូន្មានហិរញ្ញវត្ថុទេ។
-          </p>
+          <h2>📊 AI Analysis</h2>
+          <div className="result">{result}</div>
         </section>
-      </div>
+      )}
     </main>
   );
 }
